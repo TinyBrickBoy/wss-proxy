@@ -1,0 +1,6 @@
+services:
+  proxy:
+    build: .
+    environment:
+      - BACKEND_URL=${BACKEND_URL}   # e.g. http://your-backend:3000
+    restart: unless-stopped
