@@ -2,5 +2,7 @@ services:
   proxy:
     build: .
     environment:
-      - BACKEND_URL=${BACKEND_URL}   # e.g. http://your-backend:3000
+      - BACKEND_URL=${BACKEND_URL}                          # e.g. http://your-backend:3000
+      - DNS_RESOLVER=${DNS_RESOLVER:-127.0.0.11}            # Docker embedded DNS
+      - RECONNECT_INTERVAL=${RECONNECT_INTERVAL:-5}         # Sekunden
     restart: unless-stopped
