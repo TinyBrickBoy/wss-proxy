@@ -1,13 +1,30 @@
+# Connection Header nur bei echtem Upgrade auf "upgrade" setzen,
+# sonst bleibt normales HTTP keepalive intakt.
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
 server {
     listen 3000;
 
+    # Docker DNS. valid=${RECONNECT_INTERVAL}s sorgt dafuer, dass der Backend
+    # Name alle ${RECONNECT_INTERVAL} Sekunden neu aufgeloest wird. Startet das
+    # Backend mit neuer IP neu, findet der Proxy es von selbst wieder,
+    # ohne Neustart.
+    resolver         ${DNS_RESOLVER} valid=${RECONNECT_INTERVAL}s ipv6=off;
+    resolver_timeout ${RECONNECT_INTERVAL}s;
+
     location / {
-        proxy_pass          ${BACKEND_URL};
+        # Variable erzwingt Laufzeit DNS statt einmaliger Aufloesung beim Start.
+        set $backend ${BACKEND_URL};
+
+        proxy_pass          $backend;
         proxy_http_version  1.1;
 
         # WebSocket upgrade
         proxy_set_header    Upgrade    $http_upgrade;
-        proxy_set_header    Connection "upgrade";
+        proxy_set_header    Connection $connection_upgrade;
 
         # Forward headers
         proxy_set_header    Host               $host;
@@ -15,9 +32,14 @@ server {
         proxy_set_header    X-Forwarded-For    $proxy_add_x_forwarded_for;
         proxy_set_header    X-Forwarded-Proto  $scheme;
 
+        # Verbindungsaufbau kurz halten, damit ein toter Versuch schnell
+        # scheitert und der Client sofort neu probieren kann.
+        proxy_connect_timeout ${RECONNECT_INTERVAL}s;
+
         # Keep WS connections alive
-        proxy_read_timeout  86400s;
-        proxy_send_timeout  86400s;
+        proxy_read_timeout    86400s;
+        proxy_send_timeout    86400s;
+        proxy_socket_keepalive on;
 
         # CORS
         add_header Access-Control-Allow-Origin  * always;
@@ -31,5 +53,17 @@ server {
             add_header Access-Control-Max-Age 86400;
             return 204;
         }
+
+        # Backend down oder DNS Name gerade nicht aufloesbar:
+        # nicht hart scheitern, sondern sauber "gleich nochmal" antworten.
+        error_page 502 503 504 = @backend_down;
+    }
+
+    location @backend_down {
+        add_header Retry-After ${RECONNECT_INTERVAL} always;
+        add_header Access-Control-Allow-Origin  * always;
+        add_header Access-Control-Allow-Headers "Authorization, Content-Type, Accept, X-Requested-With" always;
+        default_type application/json;
+        return 503 '{"error":"backend_unavailable","retry_after":${RECONNECT_INTERVAL}}';
     }
 }
