@@ -56,6 +56,6 @@ jobs:
       # (faf-NL01, faf-us-dallas01, faf-us-LosAngeles01).
       - name: Trigger Coolify deployment
         run: |
-          curl -fsS --retry 3 --retry-delay 5 \
+          curl -fsS -X POST --retry 3 --retry-delay 5 \
             -H "Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}" \
             "${{ secrets.COOLIFY_URL }}/api/v1/deploy?uuid=${{ secrets.COOLIFY_APP_UUID }}&force=true"
